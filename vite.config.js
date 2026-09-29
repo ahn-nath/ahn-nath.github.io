@@ -3,9 +3,8 @@ import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// GitHub Pages serves a project repo under /<repo-name>/. Set BASE_PATH=/ when
-// the site is served from a domain root (custom domain or <user>.github.io repo).
-const base = process.env.BASE_PATH || '/personal_website_2.0/';
+// This repository is the account's root GitHub Pages site.
+const base = process.env.BASE_PATH || '/';
 
 // GitHub Pages has no SPA fallback, so deep links like /projects/:id need a 404.html
 // that boots the same app.

@@ -1,0 +1,314 @@
+{
+  "brainset-production-os": {
+    "title": "Brainset — Production OS",
+    "subtitle": "SaaS multi-tenant para productoras audiovisuales, llevado desde una base ya completa en funcionalidades hacia un MVP estable y listo para producción.",
+    "description": "Brainset es una plataforma multi-tenant para productoras audiovisuales que reúne calendario, tareas, crew, casting, locaciones, transporte, proveedores, call sheets, viajes, creativo y presupuesto en un solo sistema. La plataforma llegó con un 80–90 % construido: los módulos ya existían y funcionaban. Lo que faltaba para producción era conectarlos, endurecer los caminos por donde pasan los documentos reales de producción y cerrar las brechas que solo aparecen con el uso diario en rodaje.\n\nMi rol fue llevar esa base a un estándar listo para producción en cinco áreas: seguridad de subidas, integridad del almacenamiento, distribución y aprobación de call sheets, onboarding de crew y corrección de fechas de calendario. Doce pull requests revisados en alrededor de un mes, unas 3.700 líneas en 88 archivos. Cada tarea partió de criterios de éxito y una estimación de tiempo acordados con el cliente, y se validó en staging antes de la aprobación del cliente para su publicación.\n\nEl cliente me pidió trabajar con Claude como parte del flujo de entrega: exploración del código, borradores de implementación y revisiones contra las convenciones multi-tenant del repositorio. Las tareas se estimaron con apoyo de IA y la mayoría se cerró en menos tiempo que el estimado.",
+    "general_details": [
+      { "label": "Cliente", "value": "Brain Productions (Brainset)" },
+      { "label": "Fecha", "value": "ago 2026 – sep 2026" },
+      { "label": "Rol", "value": "Desarrolladora full-stack — estabilización del MVP hacia producción" },
+      { "label": "Categoría", "value": "Desarrollo full-stack y estabilización de plataforma" },
+      { "label": "Herramientas de IA", "value": "Claude, a pedido del cliente — la mayoría de tareas cerradas bajo el estimado" },
+      { "label": "Sitio web", "valueText": "brainset.io" }
+    ],
+    "features": [
+      {
+        "title": "Subidas de archivos endurecidas",
+        "description": "- Una política compartida reemplazó las listas permitidas de cada módulo, así toda superficie de subida nueva la hereda.\n\n- Valida extensión, tipo MIME y firma de los primeros bytes: es lo que atrapa un binario renombrado a .pdf.\n\n- Se aplica en presign, commit, copia y promoción, miniaturas incluidas.",
+        "type": "Seguridad"
+      },
+      {
+        "title": "Integridad de las subidas y consumo de almacenamiento",
+        "description": "- Claves de objeto únicas y locks de Postgres evitan que dos subidas simultáneas cuenten dos veces el consumo de la organización.\n\n- El objeto se verifica en el almacenamiento antes de escribir la fila en la base.\n\n- Las subidas abandonadas antes de guardar se limpian en lugar de quedar huérfanas.",
+        "type": "Confiabilidad"
+      },
+      {
+        "title": "Distribución de call sheets con control de destinatarios",
+        "description": "- El productor elige destinatarios por departamento o de forma individual, en vez de enviar a todos.\n\n- Solo recibe el envío el crew seleccionado que tenga un email válido.\n\n- El reintento automático a los rebotes sigue llegando a su destinatario original.",
+        "type": "Flujo de trabajo"
+      },
+      {
+        "title": "Adjuntos de aprobación y notas reutilizables",
+        "description": "- Los adjuntos se preparan en la ronda de aprobación y viajan con el correo.\n\n- Los topes de tamaño se verifican de antemano, así una aprobación no falla en el último paso.\n\n- Las notas con formato se guardan como templates del proyecto con placeholders, saneadas antes del envío.",
+        "type": "Documentos"
+      },
+      {
+        "title": "Onboarding de crew y deal memos",
+        "description": "- Una marca de visualización separa un deal memo enviado de uno abierto.\n\n- Estado, fechas de envío, recepción y firma, y datos del firmante en una sola tabla.\n\n- Todos los deal memos firmados del proyecto se descargan en un único ZIP.",
+        "type": "Flujo de trabajo"
+      },
+      {
+        "title": "Correcciones para el uso diario",
+        "description": "- Los días de calendario pasaron a DATE de Postgres detrás de un contrato «YYYY-MM-DD», eliminando el corrimiento de un día en interfaz, exportaciones y documentos.\n\n- Semanas que arrancan en domingo, como las lee una producción.\n\n- Los PDF adjuntos ahora declaran base64, así llegan intactos.",
+        "type": "Corrección de bugs"
+      },
+      {
+        "title": "Entrega asistida por IA con Claude",
+        "description": "- Flujo solicitado por el cliente: Claude para explorar el código, redactar implementaciones y hacer pasadas de revisión.\n\n- Cada cambio revisado contra las convenciones multi-tenant, Zod y Prisma del repositorio antes de abrir el PR.\n\n- La mayoría de las tareas se cerró en menos tiempo que su estimación asistida por IA.",
+        "type": "Entrega y herramientas"
+      }
+    ],
+    "architecture_design_items": [
+      {
+        "label": "Seguridad de archivos",
+        "title": "Una sola política de subida compartida",
+        "texts": [
+          "Ocho módulos aceptan archivos —documentos creativos, crew, locaciones, moodboards, storyboards, viajes, proveedores y subidas genéricas—, cada uno con su propia idea de qué era aceptable. La regla ahora vive en un módulo único: conjuntos de extensiones y tipos MIME bloqueados, una lectura de nombre que recorta los puntos y espacios finales que el sistema operativo ignora, un campo Zod reutilizable y una verificación de firma sobre los primeros bytes.",
+          "El alcance está declarado con claridad en el código: es una regla de política sobre la etiqueta del archivo más sus bytes iniciales, no un antivirus. Lo que garantiza es que las dos vías hacia el almacenamiento —nombre declarado y tipo MIME declarado— terminan en el mismo objeto protegido, y que un binario renombrado se detecta por contenido y no por confianza."
+        ]
+      },
+      {
+        "label": "Integridad de subidas",
+        "title": "Commits que sobreviven a la concurrencia y a los formularios abandonados",
+        "texts": [
+          "Las subidas usan URL firmadas: el navegador manda los bytes directo al almacenamiento de objetos mientras el backend firma la petición y registra el resultado. Ese reparto deja dos huecos: dos commits simultáneos pueden contar dos veces el consumo de la organización, y un formulario abandonado antes de guardar deja objetos que nadie referencia.",
+          "Los dos se cerraron en el camino de escritura. Las claves de los objetos son únicas por colección, el commit verifica que el objeto exista antes de insertar, y la fila junto con la actualización del contador comparten una sola transacción protegida por un lock de Postgres. Una ruta de limpieza descarta las subidas que nunca se confirmaron, y la interfaz la dispara antes de cerrar un formulario sin guardar."
+        ]
+      },
+      {
+        "label": "Fechas de calendario",
+        "title": "Un día es un día, no un instante",
+        "texts": [
+          "Las fechas de scouting y los días de rodaje significan un día del calendario de pared, pero se guardaban como instantes, así que cualquiera detrás de UTC las veía un día antes: en la interfaz, en la exportación CSV y en los documentos generados por igual.",
+          "El contrato ahora es explícito de extremo a extremo: la API transporta «YYYY-MM-DD», la base guarda DATE y helpers compartidos parsean y serializan sobre componentes de calendario en UTC. Las consultas por rango cierran al final del día, así una fila que llegue con hora se mantiene dentro de la ventana."
+        ]
+      },
+      {
+        "label": "Documentos y envío",
+        "title": "PDF, correo y ZIP como un solo pipeline",
+        "texts": [
+          "Las call sheets, los deal memos y los releases son templates HTML que se renderizan a PDF en el servidor y se entregan por correo, así que un detalle de renderizado termina siendo algo que ve el destinatario. Los adjuntos ahora declaran codificación base64, ya que el valor por defecto de 7 bits del transporte corrompe el contenido binario.",
+          "El pipeline se extendió en lugar de duplicarse. Las notas de aprobación con formato se guardan como templates del proyecto, resuelven sus placeholders y pasan por un saneador antes de llegar a un correo o a una página pública de aprobación. La exportación masiva reutiliza el mismo renderizador y envía los resultados a un ZIP, con tope de archivos, nombres saneados y manejo de cancelación."
+        ]
+      },
+      {
+        "label": "Multi-tenancy y validación",
+        "title": "Trabajar dentro de un contrato multi-tenant",
+        "texts": [
+          "Toda entidad está aislada por organización, y los datos de producción además están acotados al proyecto, con verificación de pertenencia en cada petición. Los endpoints nuevos heredan esa forma en lugar de volver a enunciarla: el selector de destinatarios, los adjuntos de aprobación, la ruta de limpieza y la descarga masiva resuelven el acceso a través de los guardas existentes de organización y proyecto.",
+          "El resto del contrato se respetó en todo el trabajo: validación con Zod en las entradas, el schema de Prisma como única fuente de verdad con una migración por cada cambio de modelo, paginación en los endpoints de listas, ninguna URL firmada persistida y cada texto visible agregado a los diccionarios en inglés y español."
+        ]
+      }
+    ],
+    "gallery_items": [
+      { "title": "Onboarding de crew con estado de los deal memos" },
+      { "title": "Ronda de aprobación con adjuntos y selector de nota" },
+      { "title": "Nota de aprobación reutilizable con placeholders resueltos" },
+      { "title": "Cargador de fotos con formatos y límites aplicados" },
+      { "title": "Documentos de seguro restringidos a PDF" },
+      { "title": "Calendario de producción con semana desde el domingo" },
+      { "title": "File manager con consumo del proyecto y de la organización" },
+      { "title": "La agencia como cliente propio con su logo" }
+    ],
+    "project_links": []
+  },
+  "credit-repair-system": {
+    "title": "Sistema de reparación de crédito",
+    "subtitle": "API para una plataforma de gestión de crédito y resolución de disputas que ayuda a los clientes a mejorar su puntaje crediticio.",
+    "description": "Esta es la API de una plataforma de gestión de crédito y resolución de disputas que permite a los clientes administrar sus perfiles crediticios, generar cartas de disputa y trabajar con afiliados/empleados para mejorar sus puntajes. El sistema se integra con múltiples burós de crédito y ofrece scraping automatizado de reportes, gestión de disputas y generación de documentos.",
+    "general_details": [
+      { "label": "Cliente", "value": "Desirable Diamonds Enterprises" },
+      { "label": "Fecha", "value": "3 ene 2025" },
+      { "label": "Categoría", "value": "Diseño y desarrollo de APIs" },
+      { "label": "Sitio web", "valueText": "The Diamond Enterprises" }
+    ],
+    "features": [
+      {
+        "title": "Gestión de usuarios multi-rol",
+        "description": "- Cinco roles de usuario: Admin, Empleado, Afiliado, Cliente y Usuario básico.\n\n- Seguridad avanzada: bloqueo por dirección IP y huella del dispositivo para cuentas admin/afiliado.\n\n- Autenticación basada en JWT.",
+        "type": "Integración de IA"
+      },
+      {
+        "title": "Gestión de reportes de crédito",
+        "description": "- Scraping automatizado de reportes de crédito desde múltiples fuentes.\n\n- Procesamiento de datos estructurados con almacenamiento JSON del contenido del reporte.\n\n- Comparación y seguimiento de reportes a lo largo del tiempo.",
+        "type": "Ciencia de datos"
+      },
+      {
+        "title": "Sistema de gestión de disputas",
+        "description": "- Motivos de disputa categorizados con control de acceso basado en roles.\n\n- Generación automática de cartas para burós de crédito.\n\n- Seguimiento de disputas en múltiples rondas con monitoreo de progreso.",
+        "type": "Experiencia de usuario"
+      },
+      {
+        "title": "Generación y gestión de documentos",
+        "description": "- Generación de cartas basada en plantillas con relleno dinámico de contenido.\n\n- Plantillas de acuerdos de cliente con flujo de firma electrónica.\n\n- Sistema de carga de archivos para documentos.",
+        "type": "Experiencia de usuario"
+      },
+      {
+        "title": "Sistema de afiliados y referidos",
+        "description": "- Gestión de afiliados con flujos de aprobación.\n\n- Generación y seguimiento de enlaces de referido.\n\n- Asignación de clientes y monitoreo de progreso.",
+        "type": "Experiencia de usuario"
+      },
+      {
+        "title": "Sistema de comunicación",
+        "description": "- Plantillas de correo predefinidas para comunicación estandarizada.\n\n- Seguimiento de comunicación por texto/correo.\n\n- Gestión de preferencias de contacto (Texto, Email, Teléfono, Sin preferencia).",
+        "type": "Experiencia de usuario"
+      },
+      {
+        "title": "Seguimiento de progreso y analítica",
+        "description": "- Indicadores de progreso del cliente (estado de login, cargas de documentos, reportes de crédito).\n\n- Datos agregados en dashboard para administradores.\n\n- Seguimiento de finalización de rondas de disputa.",
+        "type": "Experiencia de usuario"
+      }
+    ],
+    "architecture_design_items": [
+      {
+        "label": "Modelo de datos",
+        "title": "Diagrama entidad-relación para reparación de crédito",
+        "texts": [
+          "La arquitectura de datos del sistema se basa en un modelo entidad-relación integral que estructura todas las operaciones de gestión crediticia. El marco central extiende AbstractUser de Django para soportar cinco roles distintos (Admin, Empleado, Afiliado, Cliente, Usuario) con modelos de perfil especializados para clientes y afiliados. Los registros de cliente contienen campos cifrados para datos sensibles, incluyendo SSN, credenciales de monitoreo de crédito y respuestas de seguridad.",
+          "El modelo establece relaciones entre reportes de crédito de tres burós (TransUnion, Experian, Equifax), motivos de disputa con accesibilidad basada en roles y cartas de disputa generadas automáticamente. Entidades de soporte gestionan facturas, acuerdos de cliente, seguimiento de referidos y el progreso de disputas en múltiples rondas con monitoreo de estado de finalización."
+        ]
+      },
+      {
+        "label": "Control de acceso basado en roles",
+        "title": "Matriz de control de acceso basado en roles",
+        "texts": [
+          "La plataforma implementa un sistema granular de control de acceso basado en roles que define permisos precisos en todas las operaciones de datos. Cinco roles de usuario tienen privilegios cuidadosamente delimitados: los Clientes acceden solo a sus propios registros y documentos asociados; los Afiliados gestionan exclusivamente a sus clientes asignados con derechos de creación y modificación; los Empleados tienen acceso de solo lectura a múltiples clientes; los Administradores mantienen control total del sistema. Los permisos a nivel de objeto refuerzan el aislamiento de datos, mientras que el bloqueo por IP y huella del dispositivo añade seguridad adicional a roles administrativos.",
+          "La matriz de permisos rige todas las operaciones CRUD sobre perfiles de cliente, reportes de crédito, gestión de disputas, generación de documentos y configuración del sistema."
+        ]
+      },
+      {
+        "label": "Gestión de disputas",
+        "title": "Flujo de trabajo de gestión de disputas",
+        "texts": [
+          "El sistema de flujo de disputas automatiza la generación de disputas crediticias mediante un proceso estructurado en varias etapas. La secuencia comienza con la ingestión de reportes desde servicios de monitoreo integrados (IdentityIQ, IdentityClub, 3Scores), seguida de la selección de ítems en cuatro categorías: información personal, información de cuentas, registros públicos e información de consultas. Los usuarios aplican motivos de disputa categorizados con filtrado por rol, y luego el sistema genera cartas específicas por buró usando plantillas dinámicas.",
+          "El proceso rastrea el avance a través de múltiples rondas de disputa con criterios de finalización que incluyen generación de cartas, envío de documentos y verificación de archivos. Cada disputa mantiene seguimiento de estado y se conecta al monitoreo de progreso del cliente a lo largo del ciclo de resolución."
+        ]
+      }
+    ],
+    "project_links": [
+      { "name": "GitHub" },
+      { "name": "Video demo" },
+      { "name": "Demo en vivo" },
+      { "name": "Marketplace" }
+    ]
+  },
+  "csr-scheduler": {
+    "title": "CSR Scheduler: reemplazo de la interfaz Job Runner",
+    "subtitle": "MVP web de escritorio que reemplaza una herramienta de scheduling en FileMaker Pro para que los gerentes de instalación asignen cuadrillas en varias sucursales con velocidad y claridad tipo parity-plus.",
+    "description": "CSR Scheduler es un MVP en el navegador creado para reemplazar una aplicación legacy FileMaker Pro (“Job Runner”) usada para la programación nocturna de instalaciones. El cliente necesitaba dejar el sistema anterior para reducir costos de suscripción y proteger su IP, manteniendo un flujo al menos tan rápido y usable como la herramienta de escritorio que ya usaban.\n\nEl producto se enfoca en “parity plus”: recrear la experiencia de scheduling existente en una app web moderna, conservar lo que funciona y dejar atrás lo peor del flujo legacy. Los datos de trabajos se refrescan desde sistemas upstream en un intervalo corto para que los schedulers trabajen siempre con work orders casi en tiempo real.\n\nEl ciclo principal refleja la operación de campo: cada noche un scheduling manager filtra trabajos por sucursal y fecha de instalación, revisa materiales y pagos, asigna instaladores desde las vistas lista/detalle y guarda asignaciones en borrador para el día siguiente. El personal de almacén puede reasignar cuadrillas por la mañana cuando cambia la disponibilidad. Más tarde, las finalizaciones verificadas se pueden confirmar y enviar a finanzas para el pago a las cuadrillas y la facturación al cliente.",
+    "general_details": [
+      { "label": "Cliente", "value": "Acorn Analytics / CSR Engineering" },
+      { "label": "Fecha", "value": "Ene 2025 (MVP)" },
+      { "label": "Categoría", "value": "Aplicación web — scheduling operativo" },
+      { "label": "Sitio web", "valueText": "Aplicación privada del cliente" }
+    ],
+    "features": [
+      {
+        "title": "Lista de trabajos con filtros por sucursal y fecha",
+        "description": "- Tabla ordenable de trabajos para la fecha de instalación y sucursal seleccionadas (Phoenix, Vegas, Denver).\n\n- Columnas: descripción del trabajo con tipos de material y pies cuadrados, número de trabajo, fecha solicitada, nombre de la propiedad, dirección, ciudad/estado/zip, lote/suite, instalador asignado, persona que ingresó el dato y payout.\n\n- La vista de lista es de solo lectura excepto el control de asignación de instalador, alineada al flujo rápido de asignar y continuar.",
+        "type": "UI operativa"
+      },
+      {
+        "title": "Asignación de instaladores y horarios en borrador",
+        "description": "- Asigna un instalador/cuadrilla disponible a cada trabajo desde la lista o el drawer de detalle.\n\n- Las asignaciones nocturnas se guardan como borrador compartido para que el almacén las revise y ajuste a la mañana siguiente si faltan cuadrillas o rechazan el trabajo.\n\n- Diseñado para el ciclo real: scheduling nocturno → reasignación matutina → verificación de fin de día.",
+        "type": "Flujo de trabajo"
+      },
+      {
+        "title": "Drawer de detalle (overview + itemizado)",
+        "description": "- Al hacer clic en un trabajo se abre un panel lateral con overview: número de trabajo, trabajador, fecha de instalación, propiedad, descripción, dirección y pago de labor.\n\n- La sección itemizada separa materiales y labor para emparejar cuadrillas con tipos de material y estimar el tamaño del crew según cantidades.\n\n- Los trabajos de quality control se identifican con números con guion (p. ej. 12345-1) para reenviar a la cuadrilla original cuando corresponde.",
+        "type": "Experiencia de usuario"
+      },
+      {
+        "title": "Visor de planos en PDF",
+        "description": "- Desde el drawer de detalle, abre el PDF del plano para juzgar complejidad y si hace falta una o varias personas.\n\n- Permite scroll de páginas en el panel y abrir el PDF en una pestaña nueva.\n\n- Reemplaza una pantalla legacy de “job mail” que se dejó fuera a propósito.",
+        "type": "Documentos"
+      },
+      {
+        "title": "Autenticación para un equipo ops pequeño",
+        "description": "- Login / logout / olvidé contraseña para un conjunto pequeño de usuarios autorizados (~10 cuentas en el MVP).\n\n- Credenciales individuales preparan el sistema para auditoría futura de cambios de agenda.\n\n- Sin signup self-service en el MVP; las cuentas se provisionan para roles de scheduling, almacén y verificación.",
+        "type": "Seguridad"
+      },
+      {
+        "title": "Asignaciones verificadas → handoff a finanzas",
+        "description": "- Flujo de verificación de fin de día para confirmar qué cuadrillas completaron qué trabajos.\n\n- Una finalización tipo “All Verified” congela las asignaciones completadas del día y notifica a finanzas para pago a cuadrillas y facturación al cliente.\n\n- Los trabajos incompletos quedan fuera de ese freeze para entrar al siguiente ciclo de scheduling.",
+        "type": "Proceso de negocio"
+      },
+      {
+        "title": "Cambio lista ↔ detalle a velocidad de escritorio",
+        "description": "- Pensado para un flujo de escritorio donde el scheduler salta constantemente entre lista y detalle.\n\n- El dataset del día es lo bastante pequeño para mantener caching en memoria / local y que el cambio de contexto se sienta tan rápido como FileMaker nativo.\n\n- Cambiar sucursal/fecha o cargar planos puede ser más lento; el hot path es lista ↔ detalle.",
+        "type": "Rendimiento"
+      }
+    ],
+    "architecture_design_items": [
+      {
+        "label": "Ciclo de scheduling",
+        "title": "Borrador nocturno → ajuste matutino → verificación vespertina",
+        "texts": [
+          "El MVP está moldeado alrededor de un día operativo que se repite. Por la noche, el scheduling manager filtra por sucursal y fecha de instalación, revisa materiales y pagos, y asigna instaladores hasta cubrir todos los trabajos del día siguiente. Esas asignaciones se comparten pero se tratan como borrador porque la realidad del almacén suele cambiar de un día para otro.",
+          "Por la mañana, el personal de almacén reabre el mismo schedule, reasigna cuadrillas ausentes o que rechazan trabajo, y entrega materiales. Más tarde, un verificador confirma la finalización con cada cuadrilla y cierra el día para que finanzas pague a instaladores y facture a clientes. El trabajo incompleto alimenta el scheduling de la noche siguiente."
+        ]
+      },
+      {
+        "label": "Migración parity-plus",
+        "title": "Salir de FileMaker sin perder el flujo",
+        "texts": [
+          "El reemplazo se acotó como “parity plus”: portar la experiencia esencial de FileMaker del scheduling manager a una app web, mantener el comportamiento familiar donde ya funcionaba y eliminar pantallas legacy problemáticas como el workaround de job mail.",
+          "Fuera de alcance del MVP: layouts móviles, reemplazo de Google Maps, edición amplia más allá de la asignación de instalador y la verificación, y la mayoría de concerns de ingestión/export ERP. Se asume que los datos de trabajos llegan ya sincronizados en un intervalo corto para que la UI se centre en velocidad y claridad de asignación."
+        ]
+      },
+      {
+        "label": "Modelo lista + detalle",
+        "title": "Tabla rápida, drawer rico, PDF cuando hace falta",
+        "texts": [
+          "La arquitectura de información es deliberadamente pequeña: una Job List densa para escanear y ordenar, más un drawer de detalle al hacer clic en la fila con overview, materiales/labor itemizados y una pestaña Floor Plan para inspeccionar el PDF.",
+          "La superficie editable se mantiene mínima a propósito. Casi todo en lista/detalle es de solo lectura para que el scheduler avance rápido; la escritura principal es elegir el instalador, con una acción separada de verificación de fin de día que finaliza el trabajo completado para finanzas."
+        ]
+      }
+    ],
+    "gallery_items": [
+      { "title": "Vista de lista de trabajos" },
+      { "title": "Detalle del trabajo — materiales y labor itemizados" },
+      { "title": "PDF del plano en el drawer de detalle" }
+    ],
+    "project_links": [
+      { "name": "GitHub" },
+      { "name": "Video demo" },
+      { "name": "Demo en vivo" }
+    ]
+  },
+  "research-imbalances-on-wikipedia": {
+    "title": "Desequilibrios de investigación en la traducción entre idiomas en Wikipedia",
+    "subtitle": "Un conjunto de herramientas para apoyar la investigación de desequilibrios en artículos de Wikipedia.",
+    "description": "Los artículos de Wikipedia pueden traducirse de su idioma original a muchos otros usando la herramienta de traducción asistida Content Translation.\nLas investigaciones iniciales han encontrado que el flujo de traducciones entre las ediciones lingüísticas de Wikipedia es extremadamente desequilibrado.\n\nLas herramientas de esta sección se desarrollaron para apoyar esa investigación inicial. Su propósito fue validar el problema, probar hipótesis y encontrar explicaciones a las anomalías para orientar futuras investigaciones.",
+    "general_details": [
+      { "label": "Cliente", "value": "Outreachy, Wikimedia Foundation" },
+      { "label": "Fecha", "value": "Ago 2023" },
+      { "label": "Categoría", "value": "Herramientas y scripts de automatización" },
+      { "label": "Sitio web", "valueText": "Proyecto Wikimedia" }
+    ],
+    "architecture_design_items": [
+      {
+        "label": "CSV Parser",
+        "title": "Flujo de trabajo del CSV Parser",
+        "texts": [
+          "Un parser especializado que transforma datos de configuración complejos y multiarchivo de Wikimedia en un dataset limpio y analizable.",
+          "- Agregación multiarchivo: parsea y combina de forma inteligente datos de numerosos archivos YAML dentro de una estructura de directorios en un único modelo plano en memoria.",
+          "- Extracción de pares de idiomas: extrae y normaliza todos los pares origen-destino soportados desde la configuración a un formato estandarizado.",
+          "- Exportación CSV: genera un CSV limpio y listo para análisis, haciendo accesibles datos de configuración complejos para hojas de cálculo o dashboards.",
+          "- Consistencia de esquema: asegura un esquema de salida consistente para un análisis fiable.",
+          "Tech: Python • PyYAML • csvdiff"
+        ]
+      },
+      {
+        "label": "CSV Time Machine",
+        "title": "Flujo de trabajo del CSV Time Machine",
+        "texts": [
+          "Un sistema de control de versiones para datos, que permite el seguimiento histórico completo y la restauración de cualquier archivo CSV dentro de un repositorio git.",
+          "- Seguimiento histórico y reproducción: parsea todo el historial git de un repositorio para reconstruir el estado de un CSV en cualquier momento.",
+          "- Restauración en un punto en el tiempo: restaura un CSV a su estado exacto desde cualquier commit anterior, eliminando la recuperación manual de datos.",
+          "- Comparación temporal: compara visualmente datos entre dos commits para identificar rápidamente qué se agregó, eliminó o cambió.",
+          "- Actualizaciones no destructivas: agrega nuevos datos sin reescribir archivos completos, manteniendo un historial de cambios limpio y eficiente.",
+          "Tech: Python • Git, Python • GitHub API • Octokit"
+        ]
+      }
+    ],
+    "gallery_items": [
+      { "title": "Salida del CSV Parser" },
+      { "title": "Salida del CSV Time Machine" }
+    ],
+    "project_links": [
+      { "name": "GitHub - CSV Time Machine" },
+      { "name": "GitHub - CSV Parser" }
+    ]
+  }
+}
